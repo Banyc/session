@@ -49,15 +49,15 @@ where
         });
     }
 }
-impl<SK, SH> SessionLayer<SK, SH>
+impl<SessionKey, SessionHandle> SessionLayer<SessionKey, SessionHandle>
 where
-    SK: SessionKey,
-    SH: SessionHandle,
+    SessionKey: std::fmt::Debug + std::hash::Hash + Eq + Clone,
+    SessionHandle: std::fmt::Debug + Clone,
 {
     /// Clone out the session handle
-    pub fn get<Q: ?Sized>(&self, key: &Q) -> Option<SH>
+    pub fn get<Q: ?Sized>(&self, key: &Q) -> Option<SessionHandle>
     where
-        SK: Borrow<Q>,
+        SessionKey: Borrow<Q>,
         Q: Eq + std::hash::Hash,
     {
         let key_to_session = self.key_to_session.read().unwrap();
@@ -67,7 +67,11 @@ where
         Some(session.clone())
     }
 
-    pub fn insert(&self, key: SK, session: SH) -> Result<(), SessionCollision<SH>> {
+    pub fn insert(
+        &self,
+        key: SessionKey,
+        session: SessionHandle,
+    ) -> Result<(), SessionCollision<SessionHandle>> {
         let mut key_to_session = self.key_to_session.write().unwrap();
         if key_to_session.get(&key).is_some() {
             return Err(SessionCollision(session));
@@ -80,13 +84,3 @@ where
 #[derive(Debug, Clone, thiserror::Error)]
 #[error("session collision: {0}")]
 pub struct SessionCollision<SessionHandle: std::fmt::Debug>(pub SessionHandle);
-
-pub trait SessionHandle: std::fmt::Debug + Clone {}
-
-pub trait SessionKey: std::fmt::Debug + std::hash::Hash + Eq + Clone {}
-impl SessionKey for String {}
-impl SessionKey for Vec<u8> {}
-impl SessionKey for u128 {}
-impl SessionKey for u64 {}
-impl SessionKey for u32 {}
-impl SessionKey for u8 {}

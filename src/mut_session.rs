@@ -1,10 +1,10 @@
 use std::{borrow::Borrow, sync::Arc, time::Duration};
 
-use crate::session::{SessionHandle, SessionKey, SessionLayer};
+use crate::session::SessionLayer;
 
 use tokio::sync::{Mutex as TokioMutex, OwnedMutexGuard};
 
-/// Store sessions that can be mutated asyncrounously
+/// Store sessions that can be mutated asynchronously
 #[derive(Debug)]
 pub struct MutSessionLayer<SessionKey, MutSession> {
     session: Arc<SessionLayer<SessionKey, Session<MutSession>>>,
@@ -20,13 +20,14 @@ where
         }
     }
 }
-impl<SK, S: MutSession> MutSessionLayer<SK, S>
+impl<SessionKey, MutSession> MutSessionLayer<SessionKey, MutSession>
 where
-    SK: SessionKey + Sync + Send + 'static,
+    SessionKey: std::fmt::Debug + Clone + Eq + std::hash::Hash + Sync + Send + 'static,
+    MutSession: std::fmt::Debug + Sync + Send + 'static,
 {
-    pub async fn get_mut<Q: ?Sized>(&self, key: &Q) -> Option<OwnedMutexGuard<S>>
+    pub async fn get_mut<Q: ?Sized>(&self, key: &Q) -> Option<OwnedMutexGuard<MutSession>>
     where
-        SK: Borrow<Q>,
+        SessionKey: Borrow<Q>,
         Q: Eq + std::hash::Hash,
     {
         let session = self.session.get(key)?;
@@ -34,7 +35,11 @@ where
         Some(mut_session)
     }
 
-    pub fn insert(&self, key: SK, mut_session: S) -> Result<(), MutSessionCollision> {
+    pub fn insert(
+        &self,
+        key: SessionKey,
+        mut_session: MutSession,
+    ) -> Result<(), MutSessionCollision> {
         let session = Session(Arc::new(TokioMutex::new(mut_session)));
         self.session
             .insert(key, session)
@@ -49,11 +54,8 @@ pub struct MutSessionCollision;
 /// Satisfy any bounds that [`SessionLayer`] requires
 #[derive(Debug)]
 struct Session<MutSession>(Arc<TokioMutex<MutSession>>);
-impl<MS: MutSession> SessionHandle for Session<MS> {}
 impl<MutSession> Clone for Session<MutSession> {
     fn clone(&self) -> Self {
         Self(Arc::clone(&self.0))
     }
 }
-
-pub trait MutSession: std::fmt::Debug + Sync + Send + 'static {}
